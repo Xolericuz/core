@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>xoleric/home</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>π</text></svg>">
+</head>
+<body>
+
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{
+    margin:0;
+    overflow:hidden;
+    background:#000;
+}
+
+/* ===== MODERN LOADING SCREEN ===== */
+#loader{
+    position:fixed;
+    inset:0;
+    background:#000;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    z-index:9999;
+    transition:opacity 0.8s ease;
+}
+
+.loader-title{
+    color:#0f0;
+    font-family:monospace;
+    letter-spacing:4px;
+    margin-bottom:20px;
+    text-transform:uppercase;
+}
+
+/* Neon spinning ring */
+.loader-ring{
+    width:90px;
+    height:90px;
+    border:3px solid rgba(0,255,0,.15);
+    border-top:3px solid #0f0;
+    border-radius:50%;
+    animation:spin 1.2s linear infinite;
+    box-shadow:0 0 15px #0f0;
+}
+
+@keyframes spin{
+    to{transform:rotate(360deg);}
+}
+
+/* Progress text */
+#loadText{
+    margin-top:15px;
+    color:#0f0;
+    font-family:monospace;
+    font-size:12px;
+    letter-spacing:2px;
+}
+
+/* Matrix scan */
+.matrix-scan{
+    position:fixed;
+    inset:0;
+    background:linear-gradient(to bottom,transparent 95%,rgba(0,255,100,0.08) 100%);
+    background-size:100% 4px;
+    pointer-events:none;
+    animation:scan 10s linear infinite;
+}
+@keyframes scan{
+    from{background-position:0 0;}
+    to{background-position:0 100%;}
+}
+
+/* Grid */
+.grid{
+    position:fixed;
+    inset:0;
+    background-image:
+      linear-gradient(rgba(0,255,0,.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,255,0,.03) 1px, transparent 1px);
+    background-size:60px 60px;
+    pointer-events:none;
+    opacity:.4;
+}
+</style>
+</head>
+
+<body>
+
+<!-- ===== LOADER ===== -->
+<div id="loader">
+  <div class="loader-title">XOLERIC CORE BOOT</div>
+  <div class="loader-ring"></div>
+  <div id="loadText">INITIALIZING...</div>
+</div>
+
+<div class="matrix-scan"></div>
+<div class="grid"></div>
+
+<audio id="bootSound" src="https://assets.mixkit.co/active_storage/sfx/2570/2570-preview.mp3"></audio>
+<audio id="staticSound" src="https://assets.mixkit.co/active_storage/sfx/2505/2505-preview.mp3" loop></audio>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+let camera, scene, renderer, mesh;
+
+let lon = 0, lat = 0;
+let targetLon = 0, targetLat = 0;
+let radius = 520, targetRadius = 520;
+
+let isDragging = false;
+let lastX = 0, lastY = 0;
+
+const bootSound = document.getElementById("bootSound");
+const staticSound = document.getElementById("staticSound");
+const loadText = document.getElementById("loadText");
+const loader = document.getElementById("loader");
+
+const config = {
+  texture: "https://i.imgur.com/jevL9av.jpg",
+  dragSensitivity: 0.25,
+  wheelZoom: 0.35,
+  wheelPan: 0.18,
+  wheelTilt: 0.02,
+  damping: 0.07,
+  autoRotate: 0.02
+};
+
+bootSound.volume = 0.4;
+staticSound.volume = 0.04;
+
+init();
+
+function init(){
+  bootSound.play().catch(()=>{});
+
+  loadText.innerText = "LOADING CORE...";
+  
+  scene = new THREE.Scene();
+  camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 1, 2000);
+
+  const geo = new THREE.SphereGeometry(500, 80, 60);
+  geo.scale(-1,1,1);
+
+  const tex = new THREE.TextureLoader().load(config.texture, () => {
+      loadText.innerText = "RENDER READY";
+      setTimeout(closeLoader, 900);
+  });
+
+  const mat = new THREE.MeshBasicMaterial({map:tex});
+  mesh = new THREE.Mesh(geo, mat);
+  scene.add(mesh);
+
+  renderer = new THREE.WebGLRenderer({antialias:true});
+  renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+  renderer.setSize(innerWidth,innerHeight);
+  document.body.appendChild(renderer.domElement);
+
+  window.addEventListener('resize', resize);
+  document.addEventListener('mousedown', startDrag);
+  document.addEventListener('mousemove', drag);
+  document.addEventListener('mouseup', ()=>isDragging=false);
+  document.addEventListener('touchstart', startDrag, {passive:false});
+  document.addEventListener('touchmove', drag, {passive:false});
+  document.addEventListener('touchend', ()=>isDragging=false);
+  document.addEventListener('wheel', smartWheel, {passive:false});
+
+  animate();
+}
+
+function closeLoader(){
+  loader.style.opacity = "0";
+  setTimeout(()=>{
+    loader.style.display = "none";
+    staticSound.play().catch(()=>{});
+  },800);
+}
+
+// ===== DRAG =====
+function startDrag(e){
+  isDragging=true;
+  const x = e.touches ? e.touches[0].clientX : e.clientX;
+  const y = e.touches ? e.touches[0].clientY : e.clientY;
+  lastX=x; lastY=y;
+}
+
+function drag(e){
+  if(!isDragging) return;
+  const x = e.touches ? e.touches[0].clientX : e.clientX;
+  const y = e.touches ? e.touches[0].clientY : e.clientY;
+
+  targetLon += (x-lastX)*config.dragSensitivity;
+  targetLat -= (y-lastY)*config.dragSensitivity;
+
+  lastX=x; lastY=y;
+}
+
+// ===== SMART SCROLL =====
+function smartWheel(e){
+  e.preventDefault();
+  targetRadius += e.deltaY * config.wheelZoom;
+  targetRadius = THREE.MathUtils.clamp(targetRadius, 300, 900);
+  targetLon -= e.deltaX * config.wheelPan;
+  targetLat += e.deltaY * config.wheelTilt;
+}
+
+// ===== RESIZE =====
+function resize(){
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight);
+}
+
+// ===== ANIMATE =====
+function animate(){
+  requestAnimationFrame(animate);
+
+  if(!isDragging){
+    targetLon += config.autoRotate;
+  }
+
+  lon += (targetLon-lon)*config.damping;
+  lat += (targetLat-lat)*config.damping;
+  lat = THREE.MathUtils.clamp(lat,-85,85);
+  radius += (targetRadius-radius)*config.damping;
+
+  const phi = THREE.MathUtils.degToRad(90-lat);
+  const theta = THREE.MathUtils.degToRad(lon);
+
+  camera.position.set(
+    radius*Math.sin(phi)*Math.cos(theta),
+    radius*Math.cos(phi),
+    radius*Math.sin(phi)*Math.sin(theta)
+  );
+  camera.lookAt(0,0,0);
+
+  renderer.render(scene,camera);
+}
+</script>
+</body>
+</html>
